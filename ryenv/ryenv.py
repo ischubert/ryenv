@@ -13,7 +13,8 @@ class disk_env():
         floor_level=0.65,
         finger_relative_level=0.14,
         tau=.01,
-        safety_distance=0.005
+        safety_distance=0.005,
+        file=None
     ):
         self.action_duration = action_duration
         self.floor_level = floor_level
@@ -25,7 +26,12 @@ class disk_env():
         self.proportion_per_step = 1/self.n_steps
 
         self.C = ry.Config()
-        self.C.addFile('../../manipulation-planning/examples/19-PushSimulation/z.push1_backup.g')
+
+        if file is not None:
+            self.C.addFile(file)
+        else:
+            self.C.addFile('ryenv/z.push_default.g')
+
         self.C.makeObjectsFree(['finger'])
         self.C.setJointState([0.3,0.3,0.15,1,0,0,0])
 

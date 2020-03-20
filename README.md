@@ -14,10 +14,10 @@ $ pip install -e .
 ```
 To just install (without cloning the package) you can also use:
 ```
-$ pip install git+ssh://git@gitlab.com/stockr-dev/stockr.git@master#egg=stockr
+$ pip install git+ssh://git@gitlab.com/ischubert/ryenv.git@master#egg=ryenv
 ```
 
 ## Example Environments
-### disk-pushing
+### disk_env
 
-A simple environment of a disk being pushed on a table by a 2D finger.
+A simple environment of a disk being pushed on a 2D table by a 2D finger.
