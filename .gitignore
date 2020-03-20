@@ -6,6 +6,7 @@
 
 # pycache
 */__pycache__/*
+*.pyc
 
 # rai logs
 z.log.global
