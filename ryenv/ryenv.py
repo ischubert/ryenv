@@ -14,7 +14,8 @@ class disk_env():
         finger_relative_level=0.14,
         tau=.01,
         safety_distance=0.005,
-        file=None
+        file=None,
+        display=False
     ):
         self.action_duration = action_duration
         self.floor_level = floor_level
@@ -30,14 +31,14 @@ class disk_env():
         if file is not None:
             self.C.addFile(file)
         else:
-            self.C.addFile('ryenv/z.push_default.g')
+            self.C.addFile(os.getenv("HOME") + '/git/ryenv/ryenv/z.push_default.g')
 
         self.C.makeObjectsFree(['finger'])
         self.C.setJointState([0.3,0.3,0.15,1,0,0,0])
 
         self.finger_radius = self.C.frame('finger').info()['size'][0]
 
-        self.S = self.C.simulation(ry.SimulatorEngine.physx, True)
+        self.S = self.C.simulation(ry.SimulatorEngine.physx, display)
 
         self.reset_disk()
         self.Xstart = self.C.getFrameState().copy()
