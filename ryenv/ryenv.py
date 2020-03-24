@@ -1,23 +1,34 @@
+"""
+Collection of environment classes that are based on rai-python
+"""
 import sys
 import os
 import time
 import numpy as np
-
+import matplotlib.pyplot as plt
 sys.path.append(os.getenv("HOME") + '/git/rai-python/rai/rai/ry')
 import libry as ry
 
-class disk_env():
+class DiskEnv():
+    """
+    Wrapper class for the disk-on-a-table environment,
+    simulated using PhysX
+    """
     def __init__(
-        self,
-        action_duration=0.5,
-        floor_level=0.65,
-        finger_relative_level=0.14,
-        tau=.01,
-        safety_distance=0.005,
-        file=None,
-        display=False
+            self,
+            action_duration=0.5,
+            action_length=0.05,
+            break_pos_thres=0.01,
+            floor_level=0.65,
+            finger_relative_level=0.14,
+            tau=.01,
+            safety_distance=0.005,
+            file=None,
+            display=False
     ):
         self.action_duration = action_duration
+        self.action_length = action_length
+        self.break_pos_thres = break_pos_thres
         self.floor_level = floor_level
         self.finger_relative_level = finger_relative_level
         self.tau = tau
@@ -26,67 +37,84 @@ class disk_env():
         self.n_steps = int(self.action_duration/self.tau)
         self.proportion_per_step = 1/self.n_steps
 
-        self.C = ry.Config()
+        self.config = ry.Config()
 
         if file is not None:
-            self.C.addFile(file)
+            self.config.addFile(file)
         else:
-            self.C.addFile(os.getenv("HOME") + '/git/ryenv/ryenv/z.push_default.g')
+            self.config.addFile(os.getenv("HOME") + '/git/ryenv/ryenv/z.push_default.g')
 
-        self.C.makeObjectsFree(['finger'])
-        self.C.setJointState([0.3,0.3,0.15,1,0,0,0])
+        self.config.makeObjectsFree(['finger'])
+        self.config.setJointState([0.3, 0.3, 0.15, 1, 0, 0, 0])
 
-        self.finger_radius = self.C.frame('finger').info()['size'][0]
+        self.finger_radius = self.config.frame('finger').info()['size'][0]
 
-        self.S = self.C.simulation(ry.SimulatorEngine.physx, display)
+        self.simulation = self.config.simulation(ry.SimulatorEngine.physx, display)
 
         self.reset_disk()
-        self.Xstart = self.C.getFrameState().copy()
 
         self.disk_dimensions = [0.2, 0.25]
-        self.C.frame('box').setShape(ry.ST.cylinder, size=self.disk_dimensions)
+        self.config.frame('box').setShape(ry.ST.cylinder, size=self.disk_dimensions)
 
-        self.reset([0.3,0.3])
+        self.reset([0.3, 0.3])
 
     def view(self):
-        return self.C.view()
-    
-    def add_and_show_target(self,target_state):
-        target = self.C.addFrame(name="target")
+        """
+        Create view of current configuration
+        """
+        return self.config.view()
+
+    def add_and_show_target(self, target_state):
+        """
+        Add target state and visualize it in view
+        """
+        target = self.config.addFrame(name="target")
         target.setShape(ry.ST.cylinder, size=self.disk_dimensions)
-        target.setColor([1,1,0,0.4])
-        
+        target.setColor([1, 1, 0, 0.4])
+
         self.set_frame_state(
             target_state,
             "target"
         )
-    
+
     def get_disk_state(self):
-        return np.array(self.C.frame('box').getPosition()[:2])
-    
-    def reset_disk(self,coords = (0,0)):
+        """
+        Get the current position of the disk
+        """
+        return np.array(self.config.frame('box').getPosition()[:2])
+
+    def reset_disk(self, coords=(0, 0)):
+        """
+        Reset the disk to an arbitrary position
+        """
         # always reset box to the center
         self.set_frame_state(
             coords,
             'box'
         )
-        state_now = self.C.getFrameState()
-        self.S.setState(state_now, np.zeros((state_now.shape[0],6)))
-    
-    def finger_position_outside_of_starting_disk(
-        self,
-        finger_position
+        state_now = self.config.getFrameState()
+        self.simulation.setState(state_now, np.zeros((state_now.shape[0], 6)))
+
+    def allowed_state(
+            self,
+            finger_position
     ):
+        """
+        Return whether a state of the finger is within the allowed area or not
+        """
         return np.linalg.norm(finger_position) > self.disk_dimensions[0] + 0.06
-        
+
     def reset(
-        self,
-        finger_position,
-        disk_position = (0,0)
-    ):  
-        assert self.finger_position_outside_of_starting_disk(finger_position)
-        
-        q = np.array([
+            self,
+            finger_position,
+            disk_position=(0, 0)
+    ):
+        """
+        Reset the state (i.e. the finger state) to an arbitrary position
+        """
+        assert self.allowed_state(finger_position)
+
+        joint_q = np.array([
             *finger_position,
             self.finger_relative_level,
             1.,
@@ -94,89 +122,186 @@ class disk_env():
             0.,
             0.
         ])
-        
+
         # Monkey patch: When I set the state, the box is initiated at
         # the specified coordinates with velocity 0.
         # However, the finger moves in time tau to its designated spot
-        # only if I use S.step. This can lead to the finger "kicking
+        # only if I use simulation.step. This can lead to the finger "kicking
         # away" the box. Thus, I set the joint state, simulate a single step, and set
         # the box state separately
-        self.C.setJointState(q)
-        self.S.step(u_control = [],tau = self.tau)
+        self.config.setJointState(joint_q)
+        self.simulation.step(u_control=[], tau=self.tau)
         self.reset_disk(coords=disk_position)
-        
+
     def evolve(
-        self,
-        n_steps = 1000,
-        fps = None
+            self,
+            n_steps=1000,
+            fps=None
     ):
+        """
+        Evolve the simulation for n_steps time steps of length self.tau
+        """
         for _ in range(n_steps):
-            self.S.step(u_control = [],tau = self.tau)
+            self.simulation.step(u_control=[], tau=self.tau)
             if fps is not None:
                 time.sleep(1/fps)
-        
+
     def set_frame_state(
-        self,
-        state,
-        frame_name
+            self,
+            state,
+            frame_name
     ):
-        self.C.frame(frame_name).setPosition([
+        """
+        Set an arbitrary frame of the configuration to
+        and arbitrary state
+        """
+        self.config.frame(frame_name).setPosition([
             *state[:2],
             self.floor_level
         ])
-    
+
     def transition(
-        self,
-        action,
-        fps = None
+            self,
+            action,
+            fps=None
     ):
+        """
+        Simulate the system's transition under an action
+        """
         # gradual pushing movement
-        q = self.C.getJointState()
+        joint_q = self.config.getJointState()
         for _ in range(self.n_steps):
-            q[0] += self.proportion_per_step * action[0]
-            q[1] += self.proportion_per_step * action[1]
-            self.C.setJointState(q)
-            self.S.step(u_control = [],tau = self.tau)
+            joint_q[0] += self.proportion_per_step * action[0]
+            joint_q[1] += self.proportion_per_step * action[1]
+            self.config.setJointState(joint_q)
+            self.simulation.step(u_control=[], tau=self.tau)
             if fps is not None:
                 time.sleep(1/fps)
-        
+
         change = np.array(
-            self.C.frame('box').getPosition()[:2]
+            self.config.frame('box').getPosition()[:2]
         )
-        
+
         return change
-    
-    def transition_transformed(
-        self,
-        action,
-        fps = None
-    ):
-        box = self.get_disk_state()
-        return self.transition(
-            np.matmul(
-                np.array([
-                    [np.cos(-box[-1]),np.sin(-box[-1])],
-                    [-np.sin(-box[-1]),np.cos(-box[-1])]
-                ]),
-                action
-            ),
-            fps=fps
-        )
-    
-    def get_finger_state(self):
-        return self.C.getJointState()[:2]
-    
+
+    def get_state(self):
+        """
+        Get the current state, i.e. position of the finger
+        """
+        return self.config.getJointState()[:2]
+
     def get_relative_finger_state(self):
-        box = self.get_disk_state()
-        finger = self.get_finger_state()
-        
-        finger_shifted = finger - box[:2]
-        finger_transformed = np.matmul(
-            np.array([
-                [np.cos(box[-1]),np.sin(box[-1])],
-                [-np.sin(box[-1]),np.cos(box[-1])]
-            ]),
-            finger_shifted
+        """"
+        Get the current state (position of the finger) relative to
+        the position of the disk
+        """
+        disk = self.get_disk_state()
+        finger = self.get_state()
+
+        finger_shifted = finger - disk
+
+        return finger_shifted
+
+    def sample_random_goals(self, n_goals):
+        """
+        This function samples uniformly from the goal distribution
+        """
+        angle_dir = np.pi*(2*np.random.rand(n_goals)-1)
+
+        return np.stack((
+            np.cos(angle_dir),
+            np.sin(angle_dir)
+        ), axis=-1)
+
+    def calculate_thresholded_change(self, change):
+        """Apply threshold to change in order to avoid giving rewards fors numerical noise"""
+        change_thresholded = change.copy()
+        if np.linalg.norm(change_thresholded) < self.break_pos_thres:
+            change_thresholded[0] = 0
+            change_thresholded[1] = 0
+        return change_thresholded
+
+    def calculate_reward(self, change, goal):
+        """calculate reward from intended goal and actual change of disk coordinates"""
+
+        change = self.calculate_thresholded_change(change)
+
+        direction_changed = not sum(change) == 0
+
+        if direction_changed:
+            direction_cosine = np.sum(change[:2]*goal[:2])/np.linalg.norm(
+                change[:2]
+                )/np.linalg.norm(goal[:2])
+
+            if direction_cosine > 0.9:
+                return 1
+            return -1
+        return 0
+
+    def find_near_neighbours(
+            self,
+            states,
+            goals,
+            state,
+            goal,
+            scale
+    ):
+        """
+        This function does a rapneid pre-choice of possible near neighbours only by
+        putting constraints on single-coordinate differences on the 5 coordinates
+        state_x,state_y,goal_dir_x,goal_dir_y,goal_orientation.
+        This greatly reduces the number of pairs the actual distance has to be
+        calculated for.
+        """
+        # only consider samples who have a smaller difference than action_length
+        # in all of their state coordinates...
+        subset = np.where(
+            np.abs(
+                states[:, 0] - state[0]
+            ) < self.action_length * scale
+        )[0]
+        subset = subset[
+            np.abs(
+                states[subset, 1] - state[1]
+            ) < self.action_length * scale
+        ]
+
+        # ...and who have a smaller difference than 0.1
+        # in both of the goal direction coordinates
+        subset = subset[
+            np.abs(
+                goals[subset, 0] - goal[0]
+            ) < 0.1 * scale
+        ]
+        subset = subset[
+            np.abs(
+                goals[subset, 1] - goal[1]
+            ) < 0.1 * scale
+        ]
+
+        return subset
+
+    def get_augmented_targets(self, states, targets):
+        """
+        Create handcrafted targets for the values of some of the states
+        """
+        targets[
+            np.any(
+                states > 1/np.sqrt(2),
+                axis=-1
+            )
+        ] = 0
+
+    def visualize_states(self, states, save_name=None):
+        """
+        Helper function to visualize a collection of states
+        """
+        plt.plot(
+            states[:, 0], states[:, 1], '*'
         )
-        
-        return finger_transformed
+        plt.xlim(-1, 1)
+        plt.ylim(-1, 1)
+
+        if save_name is not None:
+            plt.savefig(save_name + '.png')
+        plt.show()
