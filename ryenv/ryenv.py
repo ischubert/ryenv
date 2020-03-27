@@ -4,6 +4,7 @@ Collection of environment classes that are based on rai-python
 import sys
 import os
 import time
+import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 sys.path.append(os.getenv("HOME") + '/git/rai-python/rai/rai/ry')
@@ -14,6 +15,7 @@ class DiskEnv():
     Wrapper class for the disk-on-a-table environment,
     simulated using PhysX
     """
+
     def __init__(
             self,
             action_duration=0.5,
@@ -42,19 +44,22 @@ class DiskEnv():
         if file is not None:
             self.config.addFile(file)
         else:
-            self.config.addFile(os.getenv("HOME") + '/git/ryenv/ryenv/z.push_default.g')
+            self.config.addFile(os.getenv("HOME") +
+                                '/git/ryenv/ryenv/z.push_default.g')
 
         self.config.makeObjectsFree(['finger'])
         self.config.setJointState([0.3, 0.3, 0.15, 1, 0, 0, 0])
 
         self.finger_radius = self.config.frame('finger').info()['size'][0]
 
-        self.simulation = self.config.simulation(ry.SimulatorEngine.physx, display)
+        self.simulation = self.config.simulation(
+            ry.SimulatorEngine.physx, display)
 
         self.reset_disk()
 
         self.disk_dimensions = [0.2, 0.25]
-        self.config.frame('box').setShape(ry.ST.cylinder, size=self.disk_dimensions)
+        self.config.frame('box').setShape(
+            ry.ST.cylinder, size=self.disk_dimensions)
 
         self.reset([0.3, 0.3])
 
@@ -231,7 +236,7 @@ class DiskEnv():
         if direction_changed:
             direction_cosine = np.sum(change[:2]*goal[:2])/np.linalg.norm(
                 change[:2]
-                )/np.linalg.norm(goal[:2])
+            )/np.linalg.norm(goal[:2])
 
             if direction_cosine > 0.9:
                 return 1
@@ -305,3 +310,75 @@ class DiskEnv():
         if save_name is not None:
             plt.savefig(save_name + '.png')
         plt.show()
+
+    def test_controller(
+            self,
+            controller,
+            n_of_n_splits=(0, 1),
+            n_trial_numbers=20,
+            rollout_length=50
+    ):
+        """
+        Create data for a circular plot of the performance of
+        the controller in this environment
+        """
+        direction_angles_all = np.linspace(0, 2*np.pi, 16, endpoint=False)
+        direction_angles = np.split(
+            direction_angles_all,
+            n_of_n_splits[1]
+            )[n_of_n_splits[0]]
+
+        all_rewards = []
+
+        for direction_angle in tqdm.tqdm(direction_angles):
+            goal = np.array([
+                np.cos(direction_angle),
+                np.sin(direction_angle)
+            ])
+            rewards = []
+
+            trial_number = 0
+            while trial_number < n_trial_numbers:
+                possible_finger_state = 1*(np.random.rand(2)-0.5)
+                if self.allowed_state(possible_finger_state) and (
+                        sum(goal*possible_finger_state)/np.linalg.norm(
+                            goal)/np.linalg.norm(possible_finger_state) < 0
+                ):
+                    trial_number += 1
+                    self.reset(
+                        possible_finger_state,
+                        disk_position=[0, 0]
+                    )
+
+                    for __ in range(rollout_length):
+                        action = controller.get_action(
+                            self.get_state(), goal
+                        )
+
+                        # TODO das hier muss der controller machen, das env weiss nix von all dem
+                        # action = controller.local_dynamics_model.action_length \
+                        #     * action/np.linalg.norm(action)
+
+                        if any(np.isnan(action)):
+                            raise Exception('action is nan')
+
+                        change = self.transition(action)
+
+                        if np.sum(np.abs(
+                                self.calculate_thresholded_change(change)
+                        )) != 0:
+                            break
+
+                    if np.sum(np.abs(
+                            self.calculate_thresholded_change(change)
+                    )) == 0:
+                        reward = -10
+                    else:
+                        reward = np.sum(np.array(change)*np.array(
+                            goal))/np.linalg.norm(change)/np.linalg.norm(goal)
+
+                    print(goal, self.calculate_thresholded_change(change), reward)
+                    rewards.append(reward)
+
+            all_rewards.append(rewards)
+        return all_rewards
