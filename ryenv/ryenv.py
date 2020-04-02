@@ -24,7 +24,8 @@ class DiskEnv():
             floor_level=0.65,
             finger_relative_level=0.14,
             tau=.01,
-            safety_distance=0.005,
+            safety_distance=0.06,
+            spherically_symmetric_neighbours=False,
             file=None,
             display=False
     ):
@@ -35,6 +36,7 @@ class DiskEnv():
         self.finger_relative_level = finger_relative_level
         self.tau = tau
         self.safety_distance = safety_distance
+        self.spherically_symmetric_neighbours = spherically_symmetric_neighbours
 
         self.n_steps = int(self.action_duration/self.tau)
         self.proportion_per_step = 1/self.n_steps
@@ -48,7 +50,7 @@ class DiskEnv():
                                 '/git/ryenv/ryenv/z.push_default.g')
 
         self.config.makeObjectsFree(['finger'])
-        self.config.setJointState([0.3, 0.3, 0.15, 1, 0, 0, 0])
+        self.config.setJointState([0.3, 0.3, 0.15, 1., 0., 0., 0.])
 
         self.finger_radius = self.config.frame('finger').info()['size'][0]
 
@@ -107,7 +109,7 @@ class DiskEnv():
         """
         Return whether a state of the finger is within the allowed area or not
         """
-        return np.linalg.norm(finger_position) > self.disk_dimensions[0] + 0.06
+        return np.linalg.norm(finger_position) > self.disk_dimensions[0] + self.safety_distance
 
     def reset(
             self,
@@ -284,6 +286,22 @@ class DiskEnv():
             ) < 0.1 * scale
         ]
 
+        if self.spherically_symmetric_neighbours:
+            # angle-dependent cut-out in goal space
+            subset = subset[
+                np.sum(
+                    goals[subset, :] * goal[None, :],
+                    axis=-1
+                ) > np.cos(0.1 * scale)
+            ]
+            # circular cut-out in state-space
+            subset = subset[
+                np.linalg.norm(
+                    states[subset, :] - state[None, :],
+                    axis=-1
+                ) < self.action_length * scale
+            ]
+
         return subset
 
     def get_augmented_targets(self, states, targets):
@@ -291,10 +309,10 @@ class DiskEnv():
         Create handcrafted targets for the values of some of the states
         """
         targets[
-            np.any(
-                states > 1/np.sqrt(2),
+            np.linalg.norm(
+                states,
                 axis=-1
-            )
+            ) > 1
         ] = 0
 
     def visualize_states(self, states, save_name=None):
