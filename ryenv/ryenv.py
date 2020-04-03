@@ -19,12 +19,12 @@ class DiskEnv():
     def __init__(
             self,
             action_duration=0.5,
-            action_length=0.05,
-            break_pos_thres=0.01,
+            action_length=0.1,
+            break_pos_thres=0.03,
             floor_level=0.65,
             finger_relative_level=0.14,
             tau=.01,
-            safety_distance=0.06,
+            safety_distance=0.1,
             spherically_symmetric_neighbours=False,
             file=None,
             display=False
