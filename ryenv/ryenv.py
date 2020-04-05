@@ -312,7 +312,7 @@ class DiskEnv():
             np.linalg.norm(
                 states,
                 axis=-1
-            ) > 1
+            ) > 2
         ] = 0
 
     def visualize_states(self, states, save_name=None):
