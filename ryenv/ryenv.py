@@ -58,11 +58,7 @@ class DiskEnv():
             ry.SimulatorEngine.physx, display)
 
         self.reset_disk()
-
         self.disk_dimensions = [0.2, 0.25]
-        self.config.frame('box').setShape(
-            ry.ST.cylinder, size=self.disk_dimensions)
-
         self.reset([0.3, 0.3])
 
     def view(self):
@@ -372,10 +368,6 @@ class DiskEnv():
                         action = controller.get_action(
                             self.get_state(), goal
                         )
-
-                        # TODO das hier muss der controller machen, das env weiss nix von all dem
-                        # action = controller.local_dynamics_model.action_length \
-                        #     * action/np.linalg.norm(action)
 
                         if any(np.isnan(action)):
                             raise Exception('action is nan')
