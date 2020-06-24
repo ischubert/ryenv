@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 sys.path.append(os.getenv("HOME") + '/git/rai-python/rai/rai/ry')
 import libry as ry
 
+
 class DiskEnv():
     """
     Wrapper class for the disk-on-a-table environment,
@@ -340,7 +341,7 @@ class DiskEnv():
         direction_angles = np.split(
             direction_angles_all,
             n_of_n_splits[1]
-            )[n_of_n_splits[0]]
+        )[n_of_n_splits[0]]
 
         all_rewards = []
 
@@ -392,3 +393,205 @@ class DiskEnv():
 
             all_rewards.append(rewards)
         return all_rewards
+
+
+class DiskMazeEnv():
+    """
+    Wrapper class for the disk-on-a-table environment,
+    simulated using PhysX
+    """
+
+    def __init__(
+            self,
+            action_duration=0.5,
+            action_length=0.1,
+            floor_level=0.1,
+            wall_height=0.2,
+            wall_thickness=0.01,
+            finger_relative_level=0.1,
+            tau=.01,
+            file=None,
+            display=False
+    ):
+        self.action_duration = action_duration
+        self.action_length = action_length
+        self.floor_level = floor_level
+        self.wall_height = wall_height
+        self.wall_thickness = wall_thickness
+        self.finger_relative_level = finger_relative_level
+        self.tau = tau
+
+        self.n_steps = int(self.action_duration/self.tau)
+        self.proportion_per_step = 1/self.n_steps
+
+        self.config = ry.Config()
+
+        if file is not None:
+            self.config.addFile(file)
+        else:
+            self.config.addFile(os.getenv("HOME") +
+                                '/git/ryenv/ryenv/z.push_maze.g')
+
+        self.config.makeObjectsFree(['finger'])
+
+        self.simulation = self.config.simulation(
+            ry.SimulatorEngine.physx, display)
+
+        self.wall_num = 0
+        self.reset([0.5, 0.5])
+
+    def view(self):
+        """
+        Create view of current configuration
+        """
+        return self.config.view()
+
+    def get_disk_state(self):
+        """
+        Get the current state of the disk
+        """
+        return np.array(self.config.frame('disk').getPosition()[:2])
+
+    def get_finger_state(self):
+        """
+        Get the current state of the finger
+        """
+        # for some reason, the finger has the middle of the table
+        # as reference
+        return self.config.getJointState()[:2] + np.array([
+            0.5, 0.5
+        ])
+
+    def get_relative_finger_state(self):
+        """"
+        Get the current state of the finger relative to
+        the state of the disk
+        """
+        disk = self.get_disk_state()
+        finger = self.get_finger_state()
+
+        finger_shifted = finger - disk
+
+        return finger_shifted
+
+    def get_state(self):
+        """
+        Get the current state of both finger and disk
+        """
+        return np.concatenate((
+            self.get_finger_state(),
+            self.get_disk_state()
+        ))
+
+    def reset_disk(self, coords=(0, 0)):
+        """
+        Reset the disk to an arbitrary position
+        """
+        # reset disk
+        disk = self.config.frame('disk')
+        disk.setPosition([
+            *coords,
+            self.floor_level
+        ])
+        disk.setQuaternion([
+            1., 0., 0., 0.
+        ])
+        state_now = self.config.getFrameState()
+        self.simulation.setState(state_now, np.zeros((state_now.shape[0], 6)))
+
+    def reset(
+            self,
+            finger_position,
+            disk_position=(0.1, 0.1)
+    ):
+        """
+        Reset the state (i.e. the finger state) to an arbitrary position
+        """
+        finger_position_relative_to_table = np.array(
+            finger_position
+        ) - np.array([0.5, 0.5])
+        joint_q = np.array([
+            *finger_position_relative_to_table,
+            self.finger_relative_level,
+            1.,
+            0.,
+            0.,
+            0.
+        ])
+
+        # Monkey patch: When I set the state, the disk is initiated at
+        # the specified coordinates with velocity 0.
+        # However, the finger moves in time tau to its designated spot
+        # only if I use simulation.step. This can lead to the finger "kicking
+        # away" the disk. Thus, I set the joint state, simulate a single step, and set
+        # the disk state separately
+        self.config.setJointState(joint_q)
+        self.simulation.step(u_control=[], tau=self.tau)
+        self.reset_disk(coords=disk_position)
+
+    def transition(
+            self,
+            action,
+            fps=None
+    ):
+        """
+        Simulate the system's transition under an action
+        """
+        pos_before = np.array(
+            self.config.frame('disk').getPosition()[:2]
+        )
+        # gradual pushing movement
+        joint_q = self.config.getJointState()
+        for _ in range(self.n_steps):
+            joint_q[0] += self.proportion_per_step * action[0]
+            joint_q[1] += self.proportion_per_step * action[1]
+            self.config.setJointState(joint_q)
+            self.simulation.step(u_control=[], tau=self.tau)
+            if fps is not None:
+                time.sleep(1/fps)
+
+        change = np.array(
+            self.config.frame('disk').getPosition()[:2]
+        ) - pos_before
+
+        return change
+
+    def add_wall(self, start_end):
+        """
+        Add a wall to the maze based on start and end position
+        """
+        start, end = start_end
+        # make sure the wall extends into exactly one direction
+        assert sum(start == end) == 1
+
+        box_position = (end+start)/2
+        box_position = np.append(
+            box_position,
+            (self.floor_level + self.wall_height)/2
+        )
+        xy_dim = self.wall_thickness*(start == end) + np.abs(end-start)
+
+        wall = self.config.addFrame(name='wall_'+str(self.wall_num))
+        wall.setShape(ry.ST.box, [
+            xy_dim[0], xy_dim[1], self.wall_height, 0.0
+        ])
+        wall.setPosition(box_position)
+        wall.setQuaternion([1, 0, 0, 0])
+        wall.setColor([1, 1, 0])
+
+        self.wall_num += 1
+
+
+    def visualize_states(self, states, save_name=None):
+        """
+        Helper function to visualize a collection of states
+        """
+        plt.plot(
+            states[:, 0], states[:, 1], '*'
+        )
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+
+        if save_name is not None:
+            plt.savefig(save_name + '.png')
+        plt.show()

@@ -1,4 +1,7 @@
 # %%
+"""
+Tests for the disk env class
+"""
 import ryenv
 
 MYENV = ryenv.DiskEnv()
