@@ -101,12 +101,15 @@ class DiskEnv():
 
     def allowed_state(
             self,
-            finger_position
+            finger_position,
+            disk_position=np.array([0, 0])
     ):
         """
         Return whether a state of the finger is within the allowed area or not
         """
-        return np.linalg.norm(finger_position) > self.disk_dimensions[0] + self.safety_distance
+        return np.linalg.norm(
+            finger_position - disk_position
+        ) > self.disk_dimensions[0] + self.safety_distance
 
     def reset(
             self,
@@ -116,7 +119,10 @@ class DiskEnv():
         """
         Reset the state (i.e. the finger state) to an arbitrary position
         """
-        assert self.allowed_state(finger_position)
+        assert self.allowed_state(
+            finger_position,
+            disk_position=np.array(disk_position)
+        )
 
         joint_q = np.array([
             *finger_position,
@@ -405,10 +411,10 @@ class DiskMazeEnv():
             self,
             action_duration=0.5,
             action_length=0.1,
-            floor_level=0.1,
-            wall_height=0.2,
+            floor_level=0.075,
+            wall_height=0.1,
             wall_thickness=0.01,
-            finger_relative_level=0.1,
+            finger_relative_level=0.075,
             tau=.01,
             file=None,
             display=False
@@ -438,7 +444,7 @@ class DiskMazeEnv():
             ry.SimulatorEngine.physx, display)
 
         self.wall_num = 0
-        self.reset([0.5, 0.5])
+        self.reset([0, -0.1])
 
     def view(self):
         """
@@ -577,10 +583,69 @@ class DiskMazeEnv():
         ])
         wall.setPosition(box_position)
         wall.setQuaternion([1, 0, 0, 0])
+        wall.setContact(-1)
         wall.setColor([1, 1, 0])
 
         self.wall_num += 1
 
+    def add_maze(self, maze_array):
+        """
+        Translate the maze array to a physical maze
+        in the simulation
+        """
+        walls_left = maze_array
+        n_dim, m_dim = walls_left.shape
+        start_ends = []
+        for i in range(n_dim):
+            for j in range(m_dim):
+                if i == 0 or i == n_dim-1 or j == 0 or j == n_dim-1:
+                    walls_left[i, j] = 0
+                if walls_left[i, j]:
+                    for neighbour in [
+                            (1, 0),
+                            (0, 1),
+                            (-1, 0),
+                            (0, -1)
+                    ]:
+                        length = 0
+                        while (
+                                i + (length+1) * neighbour[0] >= 0
+                                and i + (length+1) * neighbour[0] <= n_dim-1
+                                and j + (length+1) * neighbour[1] >= 0
+                                and j + (length+1) * neighbour[1] <= m_dim-1
+                                and walls_left[
+                                    i + (length+1) * neighbour[0],
+                                    j + (length+1) * neighbour[1]
+                                ]
+                        ):
+                            walls_left[
+                                i + (length+1) * neighbour[0],
+                                j + (length+1) * neighbour[1]
+                            ] = 0
+                            length += 1
+
+                        if length > 0:
+                            start_ends.append([
+                                [
+                                    i,
+                                    j
+                                ],
+                                [
+                                    i + length * neighbour[0],
+                                    j + length * neighbour[1]
+                                ]
+                            ])
+
+        start_ends = np.array(start_ends) / (
+            np.array(
+                maze_array.shape
+            )[None, None, :] - 1
+        )
+
+        for start_end in start_ends:
+            self.add_wall(
+                start_end
+            )
 
     def visualize_states(self, states, save_name=None):
         """
