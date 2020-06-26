@@ -577,7 +577,7 @@ class DiskMazeEnv():
         )
         xy_dim = self.wall_thickness*(start == end) + np.abs(end-start)
 
-        wall = self.config.addFrame(name='wall_'+str(self.wall_num))
+        wall = self.config.frame('wall_'+str(self.wall_num))
         wall.setShape(ry.ST.box, [
             xy_dim[0], xy_dim[1], self.wall_height, 0.0
         ])
@@ -587,6 +587,14 @@ class DiskMazeEnv():
         wall.setColor([1, 1, 0])
 
         self.wall_num += 1
+
+    def remove_remaining_walls(self):
+        """
+        Remove non-used walls from .g file
+        """
+        while self.wall_num < 30:
+            wall = self.config.delFrame('wall_'+str(self.wall_num))
+            self.wall_num += 1
 
     def add_maze(self, maze_array):
         """
@@ -646,6 +654,8 @@ class DiskMazeEnv():
             self.add_wall(
                 start_end
             )
+
+        self.remove_remaining_walls()
 
     def visualize_states(self, states, save_name=None):
         """
