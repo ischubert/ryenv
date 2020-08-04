@@ -8,7 +8,9 @@ import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 sys.path.append(os.getenv("HOME") + '/git/rai-python/rai/rai/ry')
-import libry as ry
+
+if os.getenv("HOME") + '/git/rai-python/rai/rai/ry' in sys.path:
+    import libry as ry
 
 
 class DiskEnv():
@@ -670,3 +672,221 @@ class DiskMazeEnv():
         if save_name is not None:
             plt.savefig(save_name + '.png')
         plt.show()
+
+
+class BoxEnv():
+    """
+    This env is meant as the open source version of the 'FetchPush-v1'
+    environemnt in the open ai gym baseline
+    """
+
+    def __init__(
+            self,
+            action_duration=0.5,
+            floor_level=0.65,
+            finger_relative_level=0.14,
+            tau=.01,
+            safety_distance=0.1,
+            file=None,
+            display=False
+    ):
+        self.action_duration = action_duration
+        self.floor_level = floor_level
+        self.finger_relative_level = finger_relative_level
+        self.tau = tau
+        self.safety_distance = safety_distance
+
+        self.n_steps = int(self.action_duration/self.tau)
+        self.proportion_per_step = 1/self.n_steps
+
+        self.config = ry.Config()
+
+        if file is not None:
+            self.config.addFile(file)
+        else:
+            self.config.addFile(os.getenv("HOME") +
+                                '/git/ryenv/ryenv/z.push_box.g')
+
+        self.config.makeObjectsFree(['finger'])
+        self.config.setJointState([0.3, 0.3, 0.15, 1., 0., 0., 0.])
+
+        self.finger_radius = self.config.frame('finger').info()['size'][0]
+
+        self.simulation = self.config.simulation(
+            ry.SimulatorEngine.physx, display)
+
+        self.reset_box()
+        self.box_dimensions = [0.4, 0.4, 0.2, 0.05]
+        self.reset([0.3, 0.3])
+
+        self.maximum_xy_for_finger = 1.7
+        self.minimum_rel_z_for_finger = 0.05 + 0.03
+        self.maximum_rel_z_for_finger = 1
+
+        self.target_tolerance = 0.1
+
+    def view(self):
+        """
+        Create view of current configuration
+        """
+        return self.config.view()
+
+    def add_and_show_target(self, target_state):
+        """
+        Add target state and visualize it in view
+        """
+        self.config.delFrame('target')
+        target = self.config.addFrame(name="target")
+        target.setShape(ry.ST.box, size=self.box_dimensions)
+        target.setColor([1, 1, 0, 0.4])
+
+        self.set_frame_state(
+            target_state,
+            "target"
+        )
+
+    def reset_box(self, coords=(0, 0)):
+        """
+        Reset the box to an arbitrary position
+        """
+        print('Test for collision here')
+        # always reset box to the center
+        self.set_frame_state(
+            coords,
+            'box'
+        )
+        state_now = self.config.getFrameState()
+        self.simulation.setState(state_now, np.zeros((state_now.shape[0], 6)))
+
+    def sample_box_position(self):
+        return 2.6*np.random.rand(2) - 1.3
+
+    def reset(
+            self,
+            finger_position,
+            box_position=None,
+            goal_position=None
+    ):
+        """
+        Reset the state (i.e. the finger state) to an arbitrary position
+        """
+        if box_position is None:
+            box_position = self.sample_box_position()
+        if goal_position is None:
+            goal_position = self.sample_box_position()
+
+        joint_q = np.array([
+            *finger_position,
+            self.finger_relative_level,
+            1.,
+            0.,
+            0.,
+            0.
+        ])
+
+        # Monkey patch: When I set the state, the box is initiated at
+        # the specified coordinates with velocity 0.
+        # However, the finger moves in time tau to its designated spot
+        # only if I use simulation.step. This can lead to the finger "kicking
+        # away" the box. Thus, I set the joint state, simulate a single step, and set
+        # the box state separately
+        self.config.setJointState(joint_q)
+        self.simulation.step(u_control=[], tau=self.tau)
+        self.reset_box(coords=box_position)
+        self.add_and_show_target(goal_position)
+
+    def evolve(
+            self,
+            n_steps=1000,
+            fps=None
+    ):
+        """
+        Evolve the simulation for n_steps time steps of length self.tau
+        """
+        for _ in range(n_steps):
+            self.simulation.step(u_control=[], tau=self.tau)
+            if fps is not None:
+                time.sleep(1/fps)
+
+    def set_frame_state(
+            self,
+            state,
+            frame_name
+    ):
+        """
+        Set an arbitrary frame of the configuration to
+        and arbitrary state
+        """
+        self.config.frame(frame_name).setPosition([
+            *state[:2],
+            self.floor_level
+        ])
+        self.config.frame(frame_name).setQuaternion(
+            [1., 0., 0., 0.]
+        )
+
+    def get_state(self):
+        """
+        Get the current state, i.e. position of the finger as well
+        as the position and Quaternion of the box
+        """
+        return np.concatenate([
+            self.config.getJointState()[:3],
+            self.config.frame('box').getPosition(),
+            self.config.frame('box').getQuaternion()
+        ])
+
+    def step(
+            self,
+            action,
+            fps=None
+    ):
+        """
+        Simulate the system's transition under an action
+        """
+        # clip action
+        action = np.clip(
+            action,
+            -0.1,
+            0.1
+        )
+        
+        # gradual pushing movement
+        joint_q = self.config.getJointState()
+        for _ in range(self.n_steps):
+            new_x = joint_q[0] + self.proportion_per_step * action[0]
+            if abs(new_x) < self.maximum_xy_for_finger:
+                joint_q[0] = new_x
+
+            new_y = joint_q[1] + self.proportion_per_step * action[1]
+            if abs(new_y) < self.maximum_xy_for_finger:
+                joint_q[1] = new_y
+
+            new_z = joint_q[2] + self.proportion_per_step * action[2]
+            if new_z < self.maximum_rel_z_for_finger and new_z > self.minimum_rel_z_for_finger:
+                joint_q[2] = new_z
+
+            self.config.setJointState(joint_q)
+            self.simulation.step(u_control=[], tau=self.tau)
+            if fps is not None:
+                time.sleep(1/fps)
+
+        observation = {
+            'observation': self.get_state(),
+            'achieved_goal': self.config.frame('box').getPosition(),
+            'desired_goal': self.config.frame('target').getPosition()
+        }
+        reward = float(np.linalg.norm(
+            self.config.frame(
+                'box'
+            ).getPosition() - self.config.frame(
+                'target'
+            ).getPosition()
+        ) < self.target_tolerance)
+        done = False
+        info = {}
+
+        return observation, reward, done, info
+    
+    def sample_action(self):
+        return 0.1*np.random.rand(3)-0.05
