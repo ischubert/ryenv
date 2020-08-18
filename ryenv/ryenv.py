@@ -791,7 +791,7 @@ class BoxEnv():
         # away" the box. Thus, I set the joint state, simulate a single step, and set
         # the box state separately
         self.config.setJointState(joint_q)
-        self.simulation.step(u_control=[], tau=self.tau)
+        self.simulation.step(u_control=[0, 0, 0, 0, 0, 0, 0], tau=self.tau)
         self.reset_box(coords=box_position)
         self.add_and_show_target(goal_position)
 
@@ -804,7 +804,7 @@ class BoxEnv():
         Evolve the simulation for n_steps time steps of length self.tau
         """
         for _ in range(n_steps):
-            self.simulation.step(u_control=[], tau=self.tau)
+            self.simulation.step(u_control=[0, 0, 0, 0, 0, 0, 0], tau=self.tau)
             if fps is not None:
                 time.sleep(1/fps)
 
@@ -850,7 +850,7 @@ class BoxEnv():
             -0.1,
             0.1
         )
-        
+
         # gradual pushing movement
         joint_q = self.config.getJointState()
         for _ in range(self.n_steps):
@@ -867,7 +867,7 @@ class BoxEnv():
                 joint_q[2] = new_z
 
             self.config.setJointState(joint_q)
-            self.simulation.step(u_control=[], tau=self.tau)
+            self.simulation.step(u_control=[0, 0, 0, 0, 0, 0, 0], tau=self.tau)
             if fps is not None:
                 time.sleep(1/fps)
 
@@ -887,6 +887,6 @@ class BoxEnv():
         info = {}
 
         return observation, reward, done, info
-    
+
     def sample_action(self):
         return 0.1*np.random.rand(3)-0.05
