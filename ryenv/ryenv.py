@@ -724,6 +724,18 @@ class BoxEnv():
         self.maximum_rel_z_for_finger = 1
 
         self.target_tolerance = 0.1
+        
+        self.config.frame('floor').setColor(
+            np.array((200, 200, 200))/255,
+        )
+
+        rgb = [93, 87, 94]
+        self.config.frame('finger').setColor(np.array([
+            *rgb, 255
+        ])/255)
+        self.config.frame('box').setColor(np.array([
+            *rgb, 255
+        ])/255)
 
     def view(self):
         """
@@ -737,13 +749,17 @@ class BoxEnv():
         """
         self.config.delFrame('target')
         target = self.config.addFrame(name="target")
-        target.setShape(ry.ST.box, size=self.box_dimensions)
+        target.setShape(ry.ST.sphere, size=[0.1])
         target.setColor([1, 1, 0, 0.4])
 
         self.set_frame_state(
             target_state,
             "target"
         )
+        self.config.frame('target').setColor(
+            np.array((81, 203, 32, 130))/255
+        )
+
 
     def reset_box(self, coords=(0, 0)):
         """
