@@ -922,8 +922,8 @@ class PickAndPlaceEnv():
             action_duration=0.5,
             floor_level=0.6,
             finger_relative_level=0.14,
-            contact_distance = 0.116,
-            sticky_radius = 0.08,
+            contact_distance=0.116,
+            sticky_radius=0.08,
             tau=.01,
             file=None,
             display=False
@@ -974,7 +974,7 @@ class PickAndPlaceEnv():
         self.config.frame('disk').setColor(np.array([
             *rgb, 255
         ])/255)
-    
+
     def get_minimum_rel_z_for_finger(self):
         minimum_rel_z_for_finger = 0.05 + 0.03
         if self.contact_vec is not None:
@@ -1154,9 +1154,10 @@ class PickAndPlaceEnv():
             ).getPosition() - self.config.frame(
                 'disk'
             ).getPosition()
-            inside_sticky_area = np.linalg.norm(relative[:2])<self.sticky_radius
-            contact_now = inside_sticky_area and relative[-1]<self.contact_distance and relative[-1]>0
-            
+            inside_sticky_area = np.linalg.norm(
+                relative[:2]) < self.sticky_radius
+            contact_now = inside_sticky_area and relative[-1] < self.contact_distance and relative[-1] > 0
+
             # once the contact has been established, the
             # contact vec is set
             if contact_now:
