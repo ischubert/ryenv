@@ -135,12 +135,6 @@ class DiskEnv():
             0.
         ])
 
-        # Monkey patch: When I set the state, the box is initiated at
-        # the specified coordinates with velocity 0.
-        # However, the finger moves in time tau to its designated spot
-        # only if I use simulation.step. This can lead to the finger "kicking
-        # away" the box. Thus, I set the joint state, simulate a single step, and set
-        # the box state separately
         self.config.setJointState(joint_q)
         self.simulation.step(u_control=[], tau=self.tau)
         self.reset_disk(coords=disk_position)
@@ -527,12 +521,6 @@ class DiskMazeEnv():
             0.
         ])
 
-        # Monkey patch: When I set the state, the disk is initiated at
-        # the specified coordinates with velocity 0.
-        # However, the finger moves in time tau to its designated spot
-        # only if I use simulation.step. This can lead to the finger "kicking
-        # away" the disk. Thus, I set the joint state, simulate a single step, and set
-        # the disk state separately
         self.config.setJointState(joint_q)
         self.simulation.step(u_control=[], tau=self.tau)
         self.reset_disk(coords=disk_position)
@@ -800,12 +788,6 @@ class BoxEnv():
             0.
         ])
 
-        # Idiot solution: When I set the state, the box is initiated at
-        # the specified coordinates with velocity 0.
-        # However, the finger moves in time tau to its designated spot
-        # only if I use simulation.step. This can lead to the finger "kicking
-        # away" the box. Thus, I set the joint state, simulate a single step, and set
-        # the box state separately
         self.config.setJointState(joint_q)
         self.simulation.step(u_control=[0, 0, 0, 0, 0, 0, 0], tau=self.tau)
         self.reset_box(coords=box_position)
@@ -1136,6 +1118,20 @@ class PickAndPlaceEnv():
             self.simulation.step(u_control=[0, 0, 0, 0, 0, 0, 0], tau=self.tau)
             if fps is not None:
                 time.sleep(1/fps)
+            if self.contact_vec is not None:
+                self.config.frame('disk').setPosition(
+                    self.config.frame(
+                        'finger'
+                    ).getPosition() - self.contact_vec
+                )
+                self.config.frame('disk').setQuaternion(
+                    [1., 0., 0., 0.]
+                )
+                state_now = self.config.getFrameState()
+                self.simulation.setState(
+                    state_now,
+                    np.zeros((state_now.shape[0], 6))
+                )
 
         if self.contact_vec is not None:
             self.config.frame('disk').setPosition(

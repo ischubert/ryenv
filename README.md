@@ -1,6 +1,6 @@
 # ryenv
 
-This package contains example environments for reinforcement learning with python. The environments are simulations in PhysX based on rai and the corresponding python bindings rai-python.
+This package contains a collection of environments for reinforcement learning with python. The environments are simulations in PhysX based on [rai](https://github.com/MarcToussaint/rai) and the corresponding python bindings [rai-python](https://github.com/MarcToussaint/rai-python).
 
 ## Setup
 
@@ -17,7 +17,19 @@ To just install (without cloning the package) you can also use:
 $ pip install git+ssh://git@gitlab.com/ischubert/ryenv.git@master#egg=ryenv
 ```
 
-## Example Environments
-### disk_env
+## Environments
+### DiskEnv
 
 A simple environment of a disk being pushed on a 2D table by a 2D finger.
+
+### DiskMazeEnv
+
+Like `DiskEnv`, but there is a randomly generated maze on the table.
+
+### BoxEnv
+
+Box on a table, 10DoF
+
+### PickAndPlaceEnv
+
+Disk on a table, with "sticky" pick-and-place
