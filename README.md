@@ -5,10 +5,10 @@ This package contains a collection of environments for reinforcement learning wi
 ## Setup
 
 ### Required manual setup
-- `rai-python` has to be cloned into `$HOME/git/` and built there (use PhysX=1)
+- Install `rai-python` (configure PhysX=1 in config.mk)
 
 ### Installation
-Then, clone this repo and install the project with editable files:
+Clone this repo and install the project with editable files:
 ```
 $ pip install -e .
 ```
